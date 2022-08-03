@@ -1,23 +1,24 @@
-pragma solidity ^0.5.16;
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity ^0.8.10;
 
-import "./VErc20.sol";
+import "./CErc20.sol";
 
 /**
- * @title Vortex's VErc20Delegate Contract
- * @notice VTokens which wrap an EIP-20 underlying and are delegated to
- * @author Vortex
+ * @title Compound's CErc20Delegate Contract
+ * @notice CTokens which wrap an EIP-20 underlying and are delegated to
+ * @author Compound
  */
-contract VErc20Delegate is VErc20, VDelegateInterface {
+contract CErc20Delegate is CErc20, CDelegateInterface {
     /**
      * @notice Construct an empty delegate
      */
-    constructor() public {}
+    constructor() {}
 
     /**
      * @notice Called by the delegator on a delegate to initialize it for duty
      * @param data The encoded bytes data for any initialization
      */
-    function _becomeImplementation(bytes memory data) public {
+    function _becomeImplementation(bytes memory data) virtual override public {
         // Shh -- currently unused
         data;
 
@@ -32,7 +33,7 @@ contract VErc20Delegate is VErc20, VDelegateInterface {
     /**
      * @notice Called by the delegator on a delegate to forfeit its responsibility
      */
-    function _resignImplementation() public {
+    function _resignImplementation() virtual override public {
         // Shh -- we don't ever want this hook to be marked pure
         if (false) {
             implementation = address(0);

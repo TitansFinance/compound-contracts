@@ -1,47 +1,48 @@
-pragma solidity ^0.5.16;
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity ^0.8.10;
 
-import "./VEther.sol";
+import "./CEther.sol";
 
 /**
- * @title Vortex's Maximillion Contract
- * @author Vortex
+ * @title Compound's Maximillion Contract
+ * @author Compound
  */
 contract Maximillion {
     /**
-     * @notice The default vEther market to repay in
+     * @notice The default cEther market to repay in
      */
-    VEther public vEther;
+    CEther public cEther;
 
     /**
-     * @notice Construct a Maximillion to repay max in a VEther market
+     * @notice Construct a Maximillion to repay max in a CEther market
      */
-    constructor(VEther vEther_) public {
-        vEther = vEther_;
+    constructor(CEther cEther_) public {
+        cEther = cEther_;
     }
 
     /**
-     * @notice msg.sender sends Ether to repay an account's borrow in the vEther market
+     * @notice msg.sender sends Ether to repay an account's borrow in the cEther market
      * @dev The provided Ether is applied towards the borrow balance, any excess is refunded
      * @param borrower The address of the borrower account to repay on behalf of
      */
     function repayBehalf(address borrower) public payable {
-        repayBehalfExplicit(borrower, vEther);
+        repayBehalfExplicit(borrower, cEther);
     }
 
     /**
-     * @notice msg.sender sends Ether to repay an account's borrow in a vEther market
+     * @notice msg.sender sends Ether to repay an account's borrow in a cEther market
      * @dev The provided Ether is applied towards the borrow balance, any excess is refunded
      * @param borrower The address of the borrower account to repay on behalf of
-     * @param vEther_ The address of the vEther contract to repay in
+     * @param cEther_ The address of the cEther contract to repay in
      */
-    function repayBehalfExplicit(address borrower, VEther vEther_) public payable {
+    function repayBehalfExplicit(address borrower, CEther cEther_) public payable {
         uint received = msg.value;
-        uint borrows = vEther_.borrowBalanceCurrent(borrower);
+        uint borrows = cEther_.borrowBalanceCurrent(borrower);
         if (received > borrows) {
-            vEther_.repayBorrowBehalf.value(borrows)(borrower);
-            msg.sender.transfer(received - borrows);
+            cEther_.repayBorrowBehalf{value: borrows}(borrower);
+            payable(msg.sender).transfer(received - borrows);
         } else {
-            vEther_.repayBorrowBehalf.value(received)(borrower);
+            cEther_.repayBorrowBehalf{value: received}(borrower);
         }
     }
 }

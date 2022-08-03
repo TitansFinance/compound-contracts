@@ -1,13 +1,14 @@
-pragma solidity ^0.5.16;
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity ^0.8.10;
 
-import "./VErc20Delegate.sol";
+import "./CErc20Delegate.sol";
 
 /**
- * @title Vortex's VDai Contract
- * @notice VToken which wraps Multi-Collateral DAI
- * @author Vortex
+ * @title Compound's CDai Contract
+ * @notice CToken which wraps Multi-Collateral DAI
+ * @author Compound
  */
-contract VDaiDelegate is VErc20Delegate {
+contract CDaiDelegate is CErc20Delegate {
     /**
      * @notice DAI adapter address
      */
@@ -27,7 +28,7 @@ contract VDaiDelegate is VErc20Delegate {
      * @notice Delegate interface to become the implementation
      * @param data The encoded arguments for becoming
      */
-    function _becomeImplementation(bytes memory data) public {
+    function _becomeImplementation(bytes memory data) override public {
         require(msg.sender == admin, "only the admin may initialize the implementation");
 
         (address daiJoinAddress_, address potAddress_) = abi.decode(data, (address, address));
@@ -53,7 +54,7 @@ contract VDaiDelegate is VErc20Delegate {
         vatAddress = address(vat);
 
         // Approve moving our DAI into the vat through daiJoin
-        dai.approve(daiJoinAddress, uint(-1));
+        dai.approve(daiJoinAddress, type(uint).max);
 
         // Approve the pot to transfer our funds within the vat
         vat.hope(potAddress);
@@ -69,7 +70,7 @@ contract VDaiDelegate is VErc20Delegate {
     /**
      * @notice Delegate interface to resign the implementation
      */
-    function _resignImplementation() public {
+    function _resignImplementation() override public {
         require(msg.sender == admin, "only the admin may abandon the implementation");
 
         // Transfer all cash out of the DSR - note that this relies on self-transfer
@@ -91,18 +92,18 @@ contract VDaiDelegate is VErc20Delegate {
         daiJoin.exit(address(this), bal / RAY);
     }
 
-    /*** VToken Overrides ***/
+    /*** CToken Overrides ***/
 
     /**
       * @notice Accrues DSR then applies accrued interest to total borrows and reserves
       * @dev This calculates interest accrued from the last checkpointed block
       *      up to the current block and writes new checkpoint to storage.
       */
-    function accrueInterest() public returns (uint) {
+    function accrueInterest() override public returns (uint) {
         // Accumulate DSR interest
         PotLike(potAddress).drip();
 
-        // Accumulate VToken interest
+        // Accumulate CToken interest
         return super.accrueInterest();
     }
 
@@ -113,7 +114,7 @@ contract VDaiDelegate is VErc20Delegate {
      * @dev This excludes the value of the current message, if any
      * @return The quantity of underlying tokens owned by this contract
      */
-    function getCashPrior() internal view returns (uint) {
+    function getCashPrior() override internal view returns (uint) {
         PotLike pot = PotLike(potAddress);
         uint pie = pot.pie(address(this));
         return mul(pot.chi(), pie) / RAY;
@@ -125,13 +126,15 @@ contract VDaiDelegate is VErc20Delegate {
      * @param amount Amount of underlying to transfer
      * @return The actual amount that is transferred
      */
-    function doTransferIn(address from, uint amount) internal returns (uint) {
+    function doTransferIn(address from, uint amount) override internal returns (uint) {
+        // Read from storage once
+        address underlying_ = underlying;
         // Perform the EIP-20 transfer in
-        EIP20Interface token = EIP20Interface(underlying);
+        EIP20Interface token = EIP20Interface(underlying_);
         require(token.transferFrom(from, address(this), amount), "unexpected EIP-20 transfer in return");
 
         DaiJoinLike daiJoin = DaiJoinLike(daiJoinAddress);
-        GemLike dai = GemLike(underlying);
+        GemLike dai = GemLike(underlying_);
         PotLike pot = PotLike(potAddress);
         VatLike vat = VatLike(vatAddress);
 
@@ -154,7 +157,7 @@ contract VDaiDelegate is VErc20Delegate {
      * @param to Address to transfer funds to
      * @param amount Amount of underlying to transfer
      */
-    function doTransferOut(address payable to, uint amount) internal {
+    function doTransferOut(address payable to, uint amount) override internal {
         DaiJoinLike daiJoin = DaiJoinLike(daiJoinAddress);
         PotLike pot = PotLike(potAddress);
 

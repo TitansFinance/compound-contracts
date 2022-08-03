@@ -1,7 +1,7 @@
-pragma solidity ^0.5.16;
+pragma solidity ^0.8.10;
 
-import "./VTokenInterfaces.sol";
-import "./SafeMath.sol";
+import "https://github.com/compound-finance/compound-protocol/blob/master/contracts/CTokenInterfaces.sol";
+import "https://github.com/compound-finance/compound-protocol/blob/master/contracts/SafeMath.sol";
 
 // Source: https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/GSN/Context.sol
 /*
@@ -15,7 +15,7 @@ import "./SafeMath.sol";
  * This contract is only required for intermediate, library-like contracts.
  */
 contract Context {
-    function _msgSender() internal view returns (address payable) {
+    function _msgSender() internal view returns (address) {
         return msg.sender;
     }
 
@@ -38,7 +38,7 @@ contract Context {
  * `onlyOwner`, which can be applied to your functions to restrict their use to
  * the owner.
  */
-contract Ownable is Context {
+abstract contract Ownable is Context {
     address private _owner;
 
     event OwnershipTransferred(
@@ -130,27 +130,13 @@ interface AggregatorV3Interface {
         );
 }
 
-contract PriceOracle {
+abstract contract PriceOracle {
     /// @notice Indicator that this is a PriceOracle contract (for inspection)
     bool public constant isPriceOracle = true;
-
-    /**
-     * @notice Get the underlying price of a vToken asset
-     * @param vToken The vToken to get the underlying price of
-     * @return The underlying asset price mantissa (scaled by 1e18).
-     *  Zero means the price is unavailable.
-     */
-    function getUnderlyingPrice(VTokenInterface vToken)
-        external
-        view
-        returns (uint256);
 }
 
 contract ChainlinkPriceOracleProxy is Ownable, PriceOracle {
     using SafeMath for uint256;
-
-    /// @notice Indicator that this is a PriceOracle contract (for inspection)
-    bool public constant isPriceOracle = true;
 
     address public ethUsdChainlinkAggregatorAddress;
 
@@ -167,23 +153,21 @@ contract ChainlinkPriceOracleProxy is Ownable, PriceOracle {
     }
 
     /**
-     * @notice Get the underlying price of a vToken
+     * @notice Get the underlying price of a cToken
      * @dev Implements the PriceOracle interface for Compound v2.
-     * @param vToken The vToken address for price retrieval
+     * @param cToken The cToken address for price retrieval
      * @return Price denominated in USD, with 18 decimals, for the given vToken address. Comptroller needs prices in the format: ${raw price} * 1e(36 - baseUnit)
      */
-    function getUnderlyingPrice(VTokenInterface vToken)
+    function getUnderlyingPrice(CTokenInterface cToken)
         public
         view
         returns (uint256)
     {
-        TokenConfig memory config = tokenConfig[address(vToken)];
+        TokenConfig memory config = tokenConfig[address(cToken)];
 
         (, int256 chainlinkPrice, , , ) = AggregatorV3Interface(
-            config
-                .chainlinkAggregatorAddress
-        )
-            .latestRoundData();
+            config.chainlinkAggregatorAddress
+        ).latestRoundData();
 
         require(chainlinkPrice > 0, "Chainlink price feed invalid");
 
@@ -196,8 +180,7 @@ contract ChainlinkPriceOracleProxy is Ownable, PriceOracle {
         } else if (config.chainlinkPriceBase == 2) {
             (, int256 ethPriceInUsd, , , ) = AggregatorV3Interface(
                 ethUsdChainlinkAggregatorAddress
-            )
-                .latestRoundData();
+            ).latestRoundData();
 
             require(ethPriceInUsd > 0, "ETH price invalid");
 
@@ -222,26 +205,26 @@ contract ChainlinkPriceOracleProxy is Ownable, PriceOracle {
     }
 
     function setTokenConfigs(
-        address[] calldata vTokenAddress,
+        address[] calldata cTokenAddress,
         address[] calldata chainlinkAggregatorAddress,
         uint256[] calldata chainlinkPriceBase,
         uint256[] calldata underlyingTokenDecimals
     ) external onlyOwner {
         require(
-            vTokenAddress.length == chainlinkAggregatorAddress.length &&
-                vTokenAddress.length == chainlinkPriceBase.length &&
-                vTokenAddress.length == underlyingTokenDecimals.length,
+            cTokenAddress.length == chainlinkAggregatorAddress.length &&
+                cTokenAddress.length == chainlinkPriceBase.length &&
+                cTokenAddress.length == underlyingTokenDecimals.length,
             "Arguments must have same length"
         );
 
-        for (uint256 i = 0; i < vTokenAddress.length; i++) {
-            tokenConfig[vTokenAddress[i]] = TokenConfig({
+        for (uint256 i = 0; i < cTokenAddress.length; i++) {
+            tokenConfig[cTokenAddress[i]] = TokenConfig({
                 chainlinkAggregatorAddress: chainlinkAggregatorAddress[i],
                 chainlinkPriceBase: chainlinkPriceBase[i],
                 underlyingTokenDecimals: underlyingTokenDecimals[i]
             });
             emit TokenConfigUpdated(
-                vTokenAddress[i],
+                cTokenAddress[i],
                 chainlinkAggregatorAddress[i],
                 chainlinkPriceBase[i],
                 underlyingTokenDecimals[i]
@@ -250,7 +233,7 @@ contract ChainlinkPriceOracleProxy is Ownable, PriceOracle {
     }
 
     event TokenConfigUpdated(
-        address vTokenAddress,
+        address cTokenAddress,
         address chainlinkAggregatorAddress,
         uint256 chainlinkPriceBase,
         uint256 underlyingTokenDecimals

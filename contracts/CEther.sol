@@ -1,15 +1,16 @@
-pragma solidity ^0.5.16;
+// SPDX-License-Identifier: BSD-3-Clause
+pragma solidity ^0.8.10;
 
-import "./VToken.sol";
+import "./CToken.sol";
 
 /**
- * @title Vortex VEther Contract
- * @notice VToken which wraps Ether
- * @author Vortex
+ * @title Compound's CEther Contract
+ * @notice CToken which wraps Ether
+ * @author Compound
  */
-contract VEther is VToken {
+contract CEther is CToken {
     /**
-     * @notice Construct a new VEther money market
+     * @notice Construct a new CEther money market
      * @param comptroller_ The address of the Comptroller
      * @param interestRateModel_ The address of the interest rate model
      * @param initialExchangeRateMantissa_ The initial exchange rate, scaled by 1e18
@@ -24,9 +25,9 @@ contract VEther is VToken {
                 string memory name_,
                 string memory symbol_,
                 uint8 decimals_,
-                address payable admin_) public {
+                address payable admin_) {
         // Creator of the contract is admin during initialization
-        admin = msg.sender;
+        admin = payable(msg.sender);
 
         initialize(comptroller_, interestRateModel_, initialExchangeRateMantissa_, name_, symbol_, decimals_);
 
@@ -38,32 +39,33 @@ contract VEther is VToken {
     /*** User Interface ***/
 
     /**
-     * @notice Sender supplies assets into the market and receives vTokens in exchange
+     * @notice Sender supplies assets into the market and receives cTokens in exchange
      * @dev Reverts upon any failure
      */
     function mint() external payable {
-        (uint err,) = mintInternal(msg.value);
-        requireNoError(err, "mint failed");
+        mintInternal(msg.value);
     }
 
     /**
-     * @notice Sender redeems vTokens in exchange for the underlying asset
+     * @notice Sender redeems cTokens in exchange for the underlying asset
      * @dev Accrues interest whether or not the operation succeeds, unless reverted
-     * @param redeemTokens The number of vTokens to redeem into underlying
+     * @param redeemTokens The number of cTokens to redeem into underlying
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function redeem(uint redeemTokens) external returns (uint) {
-        return redeemInternal(redeemTokens);
+        redeemInternal(redeemTokens);
+        return NO_ERROR;
     }
 
     /**
-     * @notice Sender redeems vTokens in exchange for a specified amount of underlying asset
+     * @notice Sender redeems cTokens in exchange for a specified amount of underlying asset
      * @dev Accrues interest whether or not the operation succeeds, unless reverted
      * @param redeemAmount The amount of underlying to redeem
      * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
     function redeemUnderlying(uint redeemAmount) external returns (uint) {
-        return redeemUnderlyingInternal(redeemAmount);
+        redeemUnderlyingInternal(redeemAmount);
+        return NO_ERROR;
     }
 
     /**
@@ -72,7 +74,8 @@ contract VEther is VToken {
       * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
       */
     function borrow(uint borrowAmount) external returns (uint) {
-        return borrowInternal(borrowAmount);
+        borrowInternal(borrowAmount);
+        return NO_ERROR;
     }
 
     /**
@@ -80,8 +83,7 @@ contract VEther is VToken {
      * @dev Reverts upon any failure
      */
     function repayBorrow() external payable {
-        (uint err,) = repayBorrowInternal(msg.value);
-        requireNoError(err, "repayBorrow failed");
+        repayBorrowInternal(msg.value);
     }
 
     /**
@@ -90,28 +92,33 @@ contract VEther is VToken {
      * @param borrower the account with the debt being payed off
      */
     function repayBorrowBehalf(address borrower) external payable {
-        (uint err,) = repayBorrowBehalfInternal(borrower, msg.value);
-        requireNoError(err, "repayBorrowBehalf failed");
+        repayBorrowBehalfInternal(borrower, msg.value);
     }
 
     /**
      * @notice The sender liquidates the borrowers collateral.
      *  The collateral seized is transferred to the liquidator.
      * @dev Reverts upon any failure
-     * @param borrower The borrower of this vToken to be liquidated
-     * @param vTokenCollateral The market in which to seize collateral from the borrower
+     * @param borrower The borrower of this cToken to be liquidated
+     * @param cTokenCollateral The market in which to seize collateral from the borrower
      */
-    function liquidateBorrow(address borrower, VToken vTokenCollateral) external payable {
-        (uint err,) = liquidateBorrowInternal(borrower, msg.value, vTokenCollateral);
-        requireNoError(err, "liquidateBorrow failed");
+    function liquidateBorrow(address borrower, CToken cTokenCollateral) external payable {
+        liquidateBorrowInternal(borrower, msg.value, cTokenCollateral);
     }
 
     /**
-     * @notice Send Ether to VEther to mint
+     * @notice The sender adds to reserves.
+     * @return uint 0=success, otherwise a failure (see ErrorReporter.sol for details)
      */
-    function () external payable {
-        (uint err,) = mintInternal(msg.value);
-        requireNoError(err, "mint failed");
+    function _addReserves() external payable returns (uint) {
+        return _addReservesInternal(msg.value);
+    }
+
+    /**
+     * @notice Send Ether to CEther to mint
+     */
+    receive() external payable {
+        mintInternal(msg.value);
     }
 
     /*** Safe Token ***/
@@ -121,10 +128,8 @@ contract VEther is VToken {
      * @dev This excludes the value of the current message, if any
      * @return The quantity of Ether owned by this contract
      */
-    function getCashPrior() internal view returns (uint) {
-        (MathError err, uint startingBalance) = subUInt(address(this).balance, msg.value);
-        require(err == MathError.NO_ERROR);
-        return startingBalance;
+    function getCashPrior() override internal view returns (uint) {
+        return address(this).balance - msg.value;
     }
 
     /**
@@ -133,36 +138,15 @@ contract VEther is VToken {
      * @param amount Amount of Ether being sent
      * @return The actual amount of Ether transferred
      */
-    function doTransferIn(address from, uint amount) internal returns (uint) {
+    function doTransferIn(address from, uint amount) override internal returns (uint) {
         // Sanity checks
         require(msg.sender == from, "sender mismatch");
         require(msg.value == amount, "value mismatch");
         return amount;
     }
 
-    function doTransferOut(address payable to, uint amount) internal {
+    function doTransferOut(address payable to, uint amount) virtual override internal {
         /* Send the Ether, with minimal gas and revert on failure */
         to.transfer(amount);
-    }
-
-    function requireNoError(uint errCode, string memory message) internal pure {
-        if (errCode == uint(Error.NO_ERROR)) {
-            return;
-        }
-
-        bytes memory fullMessage = new bytes(bytes(message).length + 5);
-        uint i;
-
-        for (i = 0; i < bytes(message).length; i++) {
-            fullMessage[i] = bytes(message)[i];
-        }
-
-        fullMessage[i+0] = byte(uint8(32));
-        fullMessage[i+1] = byte(uint8(40));
-        fullMessage[i+2] = byte(uint8(48 + ( errCode / 10 )));
-        fullMessage[i+3] = byte(uint8(48 + ( errCode % 10 )));
-        fullMessage[i+4] = byte(uint8(41));
-
-        require(errCode == uint(Error.NO_ERROR), string(fullMessage));
     }
 }
